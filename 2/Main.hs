@@ -26,9 +26,22 @@ countElem x (y:ys) = if x == y
                         then succ $ countElem x ys
                         else countElem x ys
 
+isValidPW' :: Password -> Bool
+isValidPW' Password {..} = xor (char == fstOcc) (char == sndOcc)
+  where fstOcc = pw !! fromInteger (pred minCount)
+        sndOcc = pw !! fromInteger (pred maxCount)
+
+xor :: Bool -> Bool -> Bool
+xor False False = False
+xor True False = True
+xor False True = True
+xor True True = False
+
 main :: IO ()
 main = do file <- readFile "./data_words"
           let inputData = parseLine <$> lines file
-              solution = length $ filter id $ isValidPW <$> inputData
-          print solution
+              solution1 = length $ filter id $ isValidPW <$> inputData
+          print solution1
+          let solution2 = length $ filter id $ isValidPW' <$> inputData
+          print solution2
           return ()
