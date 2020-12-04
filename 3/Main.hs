@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards, TypeApplications #-}
-
 parseChar :: Char -> Bool
 parseChar '#' = True
 parseChar '.' = False
