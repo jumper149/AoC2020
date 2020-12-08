@@ -1,5 +1,7 @@
 {-# LANGUAGE RecordWildCards, TypeApplications #-}
 
+import Data.List (sort)
+
 toBoolLists :: String -> ([Bool],[Bool])
 toBoolLists str = (rowToBoolList $ drop 3 str , lrToBoolList $ take 3 str)
 
@@ -28,8 +30,16 @@ parseSeat (x:xs) exponent = digitFactor * currentDigit + rest
 parseSeatID :: ([Bool],[Bool]) -> Int
 parseSeatID (rows,lrs) = parseSeat rows 0 * 8 + parseSeat lrs 0
 
+findMissing :: Int -> [Int] -> Int
+findMissing last (current:nexts) = if succ last == current
+                                      then findMissing current nexts
+                                      else succ last
+findMissing _ [] = -1
+
 main :: IO ()
 main = do file <- readFile "./data"
           let inputData = map reverse $ lines file
               solution1 = parseSeatID . toBoolLists <$> inputData
           print $ maximum solution1
+          let solution2 = sort solution1
+          print $ findMissing 79 solution2
