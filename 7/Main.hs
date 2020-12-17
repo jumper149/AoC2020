@@ -1,8 +1,11 @@
 {-# LANGUAGE RecordWildCards, TypeApplications #-}
 
+import qualified Control.Monad.State as St
+import Data.Foldable (fold)
 import Data.List (sort)
-import Data.Set
+import qualified Data.Set as S
 import Text.Parsec
+
 
 data Color = Color
   { style :: String
@@ -62,14 +65,20 @@ parseBagData = do
           newline
           return bag
 
-containmentsOf :: Color -> [Bag] -> [Color]
-containmentsOf c bs = color <$> filter contains bs
+containmentsOf :: [Bag] -> Color -> [Color]
+containmentsOf bs c = color <$> filter contains bs
   where contains b = c `elem` (fst <$> containedBags b)
 
-recursiveContainments :: [Bag] -> Color -> State (Set Color) (Set Color)
-recursiveContainments bs c = do acc <- get
+recursiveContainments :: [Bag] -> Color -> St.State (S.Set Color) (S.Set Color)
+recursiveContainments bs c = do acc <- St.get
                                 let newAcc = acc <> currentContainments
-  where currentContainments = containmentsOf c bs
+                                if acc == newAcc
+                                   then return acc
+                                   else do
+                                     St.put newAcc
+                                     cs <- traverse (recursiveContainments bs) $ S.toList (newAcc S.\\ acc)
+                                     return $ fold cs
+  where currentContainments = S.fromList $ containmentsOf bs c
 
 main :: IO ()
 main = do file <- readFile "./data"
@@ -78,6 +87,8 @@ main = do file <- readFile "./data"
                 { style = "shiny"
                 , chromaticity = "gold"
                 }
-          print $ length <$> bagData
-          print . fmap length $ containmentsOf colorOfChoice <$> bagData
+          case bagData of
+            Left err -> print err
+            Right actualBagData -> do
+              print $ length $ S.toList $ St.evalState (recursiveContainments actualBagData colorOfChoice) mempty
           return ()
