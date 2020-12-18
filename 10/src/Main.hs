@@ -31,6 +31,9 @@ data Difference =
      -
      - this led me to the tribonacci series:
      - https://oeis.org/search?q=1%2C1%2C2%2C4%2C7%2C13%2C24&sort=&language=english&go=Search
+     -
+     - Actually this isn't even required and maybe actually wrong, because the maximum number of
+     - consecutive D1's isn't bigger than what I checked before to actually to find this series.
      -}
 
 tribs :: [Integer]
