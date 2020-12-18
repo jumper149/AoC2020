@@ -1,64 +1,67 @@
-import Control.Monad.State.Strict
-import Data.Foldable (traverse_)
-import Data.Maybe (catMaybes)
-import qualified Data.Set as S
-import qualified Data.Vector as V
+import Data.List (sort)
+import Control.Monad.Writer
 
 differences :: [Integer] -> [Integer]
 differences [] = undefined
 differences [_] = []
 differences (x0:x1:xs) = (x1 - x0) : differences (x1:xs)
 
-isValidChain' :: [Integer] -> Bool
-isValidChain' [] = undefined
-isValidChain' [_] = True
-isValidChain' (x1:x2:xs) = condition && isValidChain' (x2:xs)
-    where diff = x2 - x1
-          condition = diff > 0 && diff < 4
+inputDifferencesUnsafe :: [Integer] -> Differences
+inputDifferencesUnsafe = map f
+    where f 1 = D1
+          f 3 = D3
+          f _ = undefined
 
-isValidChain :: V.Vector Integer -> Bool
-isValidChain = isValidChain' . V.toList
+type Differences = [Difference]
 
-type Selector = V.Vector Bool
+data Difference =
+    D1
+      | D3
+      deriving (Enum, Eq, Ord, Read, Show)
 
-initialSelector :: V.Vector Integer -> Selector
-initialSelector is = V.replicate (V.length is) True
+    {-
+     - count D1's until next D3
+     - 0 -> 1
+     - 1 -> 1
+     - 2 -> 2
+     - 3 -> 4
+     - 4 -> 7
+     - 5 -> 13
+     - 6 -> 24
+     -
+     - this led me to the tribonacci series:
+     - https://oeis.org/search?q=1%2C1%2C2%2C4%2C7%2C13%2C24&sort=&language=english&go=Search
+     -}
 
-applySelector :: V.Vector Integer -> Selector -> V.Vector Integer
-applySelector is bs = fromMaybeVec $ V.zipWith f bs is
-    where f False _ = Nothing
-          f True i = Just i
-          fromMaybeVec = V.fromList . catMaybes . V.toList
+tribs :: [Integer]
+tribs = 1 : 1 : 2 : [ (tribs !! i) + (tribs !! succ i) + (tribs !! succ (succ i)) | i <- [0..]]
 
-checkSelector :: V.Vector Integer -> Selector -> Bool
-checkSelector is bs = isValidChain $ applySelector is bs
+trib :: Integer -> Integer
+trib n = tribs !! fromEnum n
 
-trySelectors :: V.Vector Integer -> Selector -> State (S.Set Selector) ()
-trySelectors is bs = when currentSelectorCheck $ do
-       ss <- get
-       if bs `S.member` ss
-          then return ()
-          else do modify $ S.insert bs
-                  traverse_ (trySelectors is) newBs
-    where currentSelectorCheck = checkSelector is bs
-          newBs = catMaybes [ generateSelector j bs | j <- [1..(length is - 2)]] -- Leave out first and last (outlet and input)
+countGroupOfD1 :: [Difference] -> (Integer,[Difference])
+countGroupOfD1 [] = undefined
+countGroupOfD1 (D3:ds) = (0,ds)
+countGroupOfD1 (D1:[]) = (1,[])
+countGroupOfD1 (D1:ds) = let (n,rest) = countGroupOfD1 ds
+                          in (succ n,rest)
 
-generateSelector :: Int -> Selector -> Maybe Selector
-generateSelector j bs = if currentB
-                           then Just $ bs V.// [(j,False)]
-                           else Nothing
-    where currentB = bs V.! j
+countGroupsOfD1 :: [Difference] -> Writer [Integer] ()
+countGroupsOfD1 ds = do
+    let (n,rest) = countGroupOfD1 ds
+    tell $ pure n
+    if rest == []
+       then return ()
+       else countGroupsOfD1 rest
 
 main :: IO ()
 main = do
     file <- readFile "./data"
-    let joltages' = S.fromList $ read <$> lines file
-        joltages = S.insert 0 $ S.insert (maximum joltages' + 3) joltages'
-        diffList = differences $ S.toAscList joltages
+    let joltages' = read <$> lines file
+        joltages = sort $ 0 : joltages' ++ [(maximum joltages' + 3)]
+        diffList = differences joltages
         numberOf3 = length $ filter (3 ==) diffList
         numberOf1 = length $ filter (1 ==) diffList
     print $ numberOf1 * numberOf3
-    let joltagesVec = V.fromList $ S.toAscList joltages
-        selectors = execState (trySelectors joltagesVec (initialSelector joltagesVec)) S.empty
-    print $ S.size selectors
+    print $ product $ map trib $ execWriter $ countGroupsOfD1 $ inputDifferencesUnsafe $ diffList
     return ()

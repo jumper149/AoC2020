@@ -5,6 +5,7 @@ in
   pkgs.mkShell {
     buildInputs = with pkgs; [
       cabal-install
+      ghcid
       haskellPackages.haskell-language-server
       haskellPackages.implicit-hie
       hlint
