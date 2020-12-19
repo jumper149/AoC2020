@@ -120,27 +120,94 @@ allFins {n=n} with (n)
   allFins {n=n} | Z = []
   allFins {n=n} | (S k) = FZ :: map FS allFins
 
-row : Fin y -> Vect x (Coordinate x y)
-row y = MkCoordinate <$> allFins <*> pure y
-
-grid : Vect y (Vect x (Coordinate x y))
-grid = row <$> allFins
-
 allCoordinates : Vect y (Vect x (Coordinate x y))
-allCoordinates = row <$> allFins
+allCoordinates = row <$> allFins where
+  row y = MkCoordinate <$> allFins <*> pure y
 
 updateWaitingArea : WaitingArea x y -> WaitingArea x y
 updateWaitingArea waitingArea = MkWaitingArea $ map (newSeat waitingArea) <$> allCoordinates
 
+-- updating (part 2)
+
+data Direction = N
+               | NE
+               | E
+               | SE
+               | S
+               | SW
+               | W
+               | NW
+
+nextCoordInDirection : Coordinate x y -> Direction -> Maybe (Coordinate x y)
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) N = do
+  newY <- integerToFin (finToInteger y + 1) yy
+  pure $ MkCoordinate x newY
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) NE = do
+  newY <- integerToFin (finToInteger y + 1) yy
+  newX <- integerToFin (finToInteger x + 1) xx
+  pure $ MkCoordinate newX newY
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) E = do
+  newX <- integerToFin (finToInteger x + 1) xx
+  pure $ MkCoordinate newX y
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) SE = do
+  newY <- integerToFin (finToInteger y - 1) yy
+  newX <- integerToFin (finToInteger x + 1) xx
+  pure $ MkCoordinate newX newY
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) S = do
+  newY <- integerToFin (finToInteger y - 1) yy
+  pure $ MkCoordinate x newY
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) SW = do
+  newY <- integerToFin (finToInteger y - 1) yy
+  newX <- integerToFin (finToInteger x - 1) xx
+  pure $ MkCoordinate newX newY
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) W = do
+  newX <- integerToFin (finToInteger x - 1) xx
+  pure $ MkCoordinate newX y
+nextCoordInDirection {x=xx} {y=yy} (MkCoordinate x y) NW = do
+  newY <- integerToFin (finToInteger y + 1) yy
+  newX <- integerToFin (finToInteger x - 1) xx
+  pure $ MkCoordinate newX newY
+
+getNextSeatInDirection : WaitingArea x y -> Coordinate x y -> Direction -> Maybe Seat
+getNextSeatInDirection waitingArea coord dir =
+  getSeat waitingArea <$> nextCoordInDirection coord dir
+
+isNextSeatInDirectionOccupied : WaitingArea x y -> Coordinate x y -> Direction -> Bool
+isNextSeatInDirectionOccupied waitingArea coord dir with (getNextSeatInDirection waitingArea coord dir)
+  isNextSeatInDirectionOccupied waitingArea coord dir | Nothing = False
+  isNextSeatInDirectionOccupied waitingArea coord dir | (Just NoSeat) with (nextCoordInDirection coord dir)
+    isNextSeatInDirectionOccupied waitingArea coord dir | (Just NoSeat) | Nothing = False -- actually impossible
+    isNextSeatInDirectionOccupied waitingArea coord dir | (Just NoSeat) | (Just nextCoord) =
+      isNextSeatInDirectionOccupied waitingArea nextCoord dir
+  isNextSeatInDirectionOccupied waitingArea coord dir | (Just EmptySeat) = False
+  isNextSeatInDirectionOccupied waitingArea coord dir | (Just OccupiedSeat) = True
+
+countNextOccupiedSeats : WaitingArea x y -> Coordinate x y -> Nat
+countNextOccupiedSeats waitingArea coord =
+  length $ filter id $ isNextSeatInDirectionOccupied waitingArea coord <$> [N, NE, E, SE, S, SW, W, NW]
+
+newSeat2 : WaitingArea x y -> Coordinate x y -> Seat
+newSeat2 waitingArea coord = case oldSeat of
+  NoSeat => NoSeat
+  EmptySeat => if 0 == occupiedNeighbors
+                  then OccupiedSeat
+                  else EmptySeat
+  OccupiedSeat => if 5 <= occupiedNeighbors
+                     then EmptySeat
+                     else OccupiedSeat
+where
+  oldSeat = getSeat waitingArea coord
+  occupiedNeighbors : Nat
+  occupiedNeighbors = countNextOccupiedSeats waitingArea coord
+
+updateWaitingArea2 : WaitingArea x y -> WaitingArea x y
+updateWaitingArea2 waitingArea = MkWaitingArea $ map (newSeat2 waitingArea) <$> allCoordinates
+
+-- counting
+
 countOccupiedSeats : WaitingArea x y -> Nat
 countOccupiedSeats (MkWaitingArea seats) =
   length $ elemIndices OccupiedSeat $ concat seats
-
-updateAndCount : WaitingArea x y -> (WaitingArea x y,Nat)
-updateAndCount waitingArea = (newWaitingArea,occupiedCount)
-  where
-    newWaitingArea = updateWaitingArea waitingArea
-    occupiedCount = countOccupiedSeats waitingArea
 
 -- main
 
@@ -149,14 +216,10 @@ upd = do
   wa <- get
   lift $ print $ countOccupiedSeats wa
   lift $ putStr "\n"
-  let waNew = updateWaitingArea wa
+  --let waNew = updateWaitingArea wa
+  let waNew = updateWaitingArea2 wa
   put waNew
   upd
-
-moreUpd : StateT (WaitingArea x y) IO ()
-moreUpd = do
-  upd
-  moreUpd
 
 main : IO ()
 main = do
@@ -165,5 +228,5 @@ main = do
        Right inputData => case parseCountXY inputData of
                                Right (x,y) => case parseWaitingArea x y inputData of
                                                    Right w0 => do
-                                                     runStateT moreUpd w0
+                                                     runStateT upd w0
                                                      pure ()
