@@ -1,70 +1,153 @@
-import Data.List (sort)
-import Control.Monad.Writer
+import Control.Monad.State
+import Data.Foldable (traverse_)
+import Text.Parsec hiding (State)
+import Text.Parsec.String
 
-differences :: [Integer] -> [Integer]
-differences [] = undefined
-differences [_] = []
-differences (x0:x1:xs) = (x1 - x0) : differences (x1:xs)
+data Direction = North
+               | South
+               | East
+               | West
+               deriving (Enum, Eq, Ord, Read, Show)
 
-inputDifferencesUnsafe :: [Integer] -> Differences
-inputDifferencesUnsafe = map f
-    where f 1 = D1
-          f 3 = D3
-          f _ = undefined
+data Turn = TurnLeft
+          | TurnRight
+          deriving (Enum, Eq, Ord, Read, Show)
 
-type Differences = [Difference]
+data ActionPrefix = Direction Direction
+                  | Turn Turn
+                  | MoveForward
+                  deriving (Eq, Ord, Read, Show)
 
-data Difference =
-    D1
-      | D3
-      deriving (Enum, Eq, Ord, Read, Show)
+data Action = Action ActionPrefix Integer
+    deriving (Eq, Ord, Read, Show)
 
-    {-
-     - count D1's until next D3
-     - 0 -> 1
-     - 1 -> 1
-     - 2 -> 2
-     - 3 -> 4
-     - 4 -> 7
-     - 5 -> 13
-     - 6 -> 24
-     -
-     - this led me to the tribonacci series:
-     - https://oeis.org/search?q=1%2C1%2C2%2C4%2C7%2C13%2C24&sort=&language=english&go=Search
-     -
-     - Actually this isn't even required and maybe actually wrong, because the maximum number of
-     - consecutive D1's isn't bigger than what I checked before to actually to find this series.
-     -}
+pAction :: Parser Action
+pAction = do
+    firstChar <- oneOf "NSEWLRF"
+    let actionPrefix = case firstChar of
+                         'N' -> Direction North
+                         'S' -> Direction South
+                         'E' -> Direction East
+                         'W' -> Direction West
+                         'L' -> Turn TurnLeft
+                         'R' -> Turn TurnRight
+                         'F' -> MoveForward
+                         _ -> undefined
+    secondInteger <- many1 digit
+    let actionValue = read secondInteger
+    return $ Action actionPrefix actionValue
 
-tribs :: [Integer]
-tribs = 1 : 1 : 2 : [ (tribs !! i) + (tribs !! succ i) + (tribs !! succ (succ i)) | i <- [0..]]
+pActions :: Parser [Action]
+pActions = many (pAction <* newline) <* eof
 
-trib :: Integer -> Integer
-trib n = tribs !! fromEnum n
+newtype ShipDirection = ShipDirection Integer
+    deriving (Enum, Eq, Ord, Read, Show)
 
-countGroupOfD1 :: [Difference] -> (Integer,[Difference])
-countGroupOfD1 [] = undefined
-countGroupOfD1 (D3:ds) = (0,ds)
-countGroupOfD1 (D1:[]) = (1,[])
-countGroupOfD1 (D1:ds) = let (n,rest) = countGroupOfD1 ds
-                          in (succ n,rest)
+changeShipDirection :: ShipDirection -> ShipDirection -> ShipDirection
+changeShipDirection (ShipDirection x) (ShipDirection y) = ShipDirection $ (x + y) `mod` 360
 
-countGroupsOfD1 :: [Difference] -> Writer [Integer] ()
-countGroupsOfD1 ds = do
-    let (n,rest) = countGroupOfD1 ds
-    tell $ pure n
-    if rest == []
-       then return ()
-       else countGroupsOfD1 rest
+instance Bounded ShipDirection where
+    minBound = ShipDirection 0
+    maxBound = ShipDirection 359
+
+data ShipState = ShipState
+    { xCoord :: Integer
+    , yCoord :: Integer
+    , shipDirection :: ShipDirection
+    }
+    deriving (Eq, Ord, Read, Show)
+
+simulateAction :: Action -> State ShipState ()
+simulateAction (Action actionPrefix amount) = do
+    ss <- get
+    let (x,y) = (xCoord ss,yCoord ss)
+        shipDir = shipDirection ss
+    case actionPrefix of
+      Direction direction -> do
+          let (newX,newY) = case direction of
+                              North -> (x,y+amount)
+                              South -> (x,y-amount)
+                              East -> (x+amount,y)
+                              West -> (x-amount,y)
+          put ss { xCoord = newX, yCoord = newY }
+      Turn degrees -> do
+          let newShipDir = case degrees of
+                             TurnLeft -> changeShipDirection shipDir $ ShipDirection (-amount)
+                             TurnRight -> changeShipDirection shipDir $ ShipDirection amount
+          put ss { shipDirection = newShipDir }
+      MoveForward -> do
+          let (newX,newY) = case shipDir of
+                              ShipDirection 0 -> (x,y+amount)
+                              ShipDirection 90 -> (x+amount,y)
+                              ShipDirection 180 -> (x,y-amount)
+                              ShipDirection 270 -> (x-amount,y)
+                              _ -> undefined
+          put ss { xCoord = newX, yCoord = newY }
+
+simulateActions :: [Action] -> State ShipState ()
+simulateActions = traverse_ simulateAction
+
+manhattanNorm :: ShipState -> Integer
+manhattanNorm ShipState { xCoord = x, yCoord = y } = abs x + abs y
+
+data ShipStateWaypoint = ShipStateWaypoint
+    { xShip :: Integer
+    , yShip :: Integer
+    , xWaypoint :: Integer
+    , yWaypoint :: Integer
+    }
+    deriving (Eq, Ord, Read, Show)
+
+turnCoordinates :: Integer -> (Integer,Integer) -> (Integer,Integer)
+turnCoordinates 0 (x,y) = (x,y)
+turnCoordinates 90 (x,y) = (y,-x)
+turnCoordinates 180 (x,y) = (-x,-y)
+turnCoordinates 270 (x,y) = (-y,x)
+turnCoordinates _ _ = undefined
+
+simulateActionWaypoint :: Action -> State ShipStateWaypoint ()
+simulateActionWaypoint (Action actionPrefix amount) = do
+    ss <- get
+    let (xs,ys) = (xShip ss,yShip ss)
+        (xw,yw) = (xWaypoint ss,yWaypoint ss)
+    case actionPrefix of
+      Direction direction -> do
+          let (newXw,newYw) = case direction of
+                                North -> (xw,yw+amount)
+                                South -> (xw,yw-amount)
+                                East -> (xw+amount,yw)
+                                West -> (xw-amount,yw)
+          put ss { xWaypoint = newXw, yWaypoint = newYw }
+      Turn degrees -> do
+          let (newXw,newYw) = case degrees of
+                             TurnLeft -> turnCoordinates ((-amount) `mod` 360) (xw,yw)
+                             TurnRight -> turnCoordinates (amount `mod` 360) (xw,yw)
+          put ss { xWaypoint = newXw, yWaypoint = newYw }
+      MoveForward -> do
+          let (newXs,newYs) = (xs + amount * xw , ys + amount * yw)
+          put ss { xShip = newXs, yShip = newYs }
+
+simulateActionsWaypoint :: [Action] -> State ShipStateWaypoint ()
+simulateActionsWaypoint = traverse_ simulateActionWaypoint
+
+manhattanNormWaypoint :: ShipStateWaypoint -> Integer
+manhattanNormWaypoint ShipStateWaypoint { xShip = x, yShip = y } = abs x + abs y
 
 main :: IO ()
 main = do
-    file <- readFile "./data"
-    let joltages' = read <$> lines file
-        joltages = sort $ 0 : joltages' ++ [(maximum joltages' + 3)]
-        diffList = differences joltages
-        numberOf3 = length $ filter (3 ==) diffList
-        numberOf1 = length $ filter (1 ==) diffList
-    print $ numberOf1 * numberOf3
-    print $ product $ map trib $ execWriter $ countGroupsOfD1 $ inputDifferencesUnsafe $ diffList
+    eitherActions <- parseFromFile pActions "./data"
+    case eitherActions of
+      Left err -> print err
+      Right actions -> do
+          let initState = ShipState { xCoord = 0
+                                    , yCoord = 0
+                                    , shipDirection = ShipDirection 90
+                                    }
+          print $ manhattanNorm $ execState (simulateActions actions) initState
+          let initStateWaypoint = ShipStateWaypoint { xShip = 0
+                                                    , yShip = 0
+                                                    , xWaypoint = 10
+                                                    , yWaypoint = 1
+                                                    }
+          print $ manhattanNormWaypoint $ execState (simulateActionsWaypoint actions) initStateWaypoint
     return ()
