@@ -120,6 +120,8 @@ toCoordinate (MkHexVector east southeast southwest) = MkCoordinate x y where
   y = southeast + southwest
 
 namespace countElements
+  -- removes duplicates
+  export
   elements : Eq a => List a -> List a -> List a
   elements [] acc = acc
   elements (x :: xs) acc with (find (== x) acc)
@@ -167,5 +169,9 @@ main = do
                     flips = snd <$> counts
                     countBlacks = length $ filter odd flips
                 print countBlacks
+                -- part 2
+                let blackCountsOdd = filter (\ (_,c) => odd c) counts
+                    blacks = fst <$> blackCountsOdd
+                print blacks
          pure ()
   pure ()
