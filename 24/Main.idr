@@ -1,6 +1,7 @@
 module Main
 
 -- base
+import Data.List
 import System.File
 
 -- contrib
@@ -114,9 +115,37 @@ Show Coordinate where
 toCoordinate : HexVector -> Coordinate
 toCoordinate (MkHexVector east southeast southwest) = MkCoordinate x y where
   x : Integer
-  x = 2 * east + southeast
+  x = 2 * east + southeast - southwest
   y : Integer
   y = southeast + southwest
+
+namespace countElements
+  elements : Eq a => List a -> List a -> List a
+  elements [] acc = acc
+  elements (x :: xs) acc with (find (== x) acc)
+    elements (x :: xs) acc | Nothing = elements xs (x :: acc)
+    elements (x :: xs) acc | (Just _) = elements xs acc
+
+  occurrences : Eq a => a -> List a -> Nat
+  occurrences x [] = Z
+  occurrences x (y :: xs) with (x == y)
+    occurrences x (y :: xs) | True = S $ occurrences x xs
+    occurrences x (y :: xs) | False = occurrences x xs
+
+  export
+  countElements : List Coordinate -> List (Coordinate,Nat)
+  countElements xs = f <$> elements xs [] where
+    f : Coordinate -> (Coordinate,Nat)
+    f x = (x,occurrences x xs)
+
+mutual
+  even : Nat -> Bool
+  even Z = True
+  even (S k) = odd k
+
+  odd : Nat -> Bool
+  odd Z = False
+  odd (S k) = even k
 
 main : IO ()
 main = do
@@ -129,10 +158,14 @@ main = do
          case directions of
               (Left (Error err _)) => putStrLn err
               (Right (ds,cs)) => do
-                print ds
+                --print ds
                 let vecs = toHexVector <$> ds
-                print vecs
+                --print vecs
                 let coords = toCoordinate <$> vecs
-                print coords
+                --print coords
+                let counts = countElements coords
+                    flips = snd <$> counts
+                    countBlacks = length $ filter odd flips
+                print countBlacks
          pure ()
   pure ()
