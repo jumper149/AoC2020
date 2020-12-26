@@ -91,6 +91,7 @@ namespace HexVector
   pred : Integer -> Integer
   pred x = x - 1
 
+  export
   toHexVector : List Direction -> HexVector
   toHexVector [] = MkHexVector 0 0 0
   toHexVector (East :: xs) = record { east $= succ } (toHexVector xs)
@@ -104,13 +105,18 @@ record Coordinate where
   constructor MkCoordinate
   xCoord, yCoord : Integer
 
-namespace Coordinate
-  toCoordinate : HexVector -> Coordinate
-  toCoordinate (MkHexVector east southeast southwest) = MkCoordinate x y where
-    x : Integer
-    x = 2 * east + southeast
-    y : Integer
-    y = southeast + southwest
+Eq Coordinate where
+  (==) (MkCoordinate x y) (MkCoordinate x' y') = x == x' && y == y'
+
+Show Coordinate where
+  show (MkCoordinate x y) = "Coordinate " ++ show x ++ " " ++ show y
+
+toCoordinate : HexVector -> Coordinate
+toCoordinate (MkHexVector east southeast southwest) = MkCoordinate x y where
+  x : Integer
+  x = 2 * east + southeast
+  y : Integer
+  y = southeast + southwest
 
 main : IO ()
 main = do
@@ -126,5 +132,7 @@ main = do
                 print ds
                 let vecs = toHexVector <$> ds
                 print vecs
+                let coords = toCoordinate <$> vecs
+                print coords
          pure ()
   pure ()
