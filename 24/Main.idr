@@ -149,6 +149,46 @@ mutual
   odd Z = False
   odd (S k) = even k
 
+adjacentCoordinates : Coordinate -> List Coordinate
+adjacentCoordinates (MkCoordinate xCoord yCoord) =
+  [ MkCoordinate (xCoord - 2) yCoord
+  , MkCoordinate (xCoord + 2) yCoord
+  , MkCoordinate (xCoord - 1) (yCoord + 1)
+  , MkCoordinate (xCoord - 1) (yCoord - 1)
+  , MkCoordinate (xCoord + 1) (yCoord + 1)
+  , MkCoordinate (xCoord + 1) (yCoord - 1)
+  ]
+
+-- adjacent to: c, list of blacks: cs
+countAdjacentBlacks : Coordinate -> List Coordinate -> Nat
+countAdjacentBlacks c cs = length $ filter id (f <$> adjacentCoordinates c) where
+  f : Coordinate -> Bool
+  f adjC = case find (== adjC) cs of
+                Nothing => False
+                (Just _) => True
+
+blacksToWhites : List Coordinate -> List Coordinate
+blacksToWhites blacks = elements (foldr f prepWhites blacks) [] where
+  prepWhites : List Coordinate
+  prepWhites = concat $ adjacentCoordinates <$> blacks
+  f : Coordinate -> List Coordinate -> List Coordinate
+  f c cs = filter (/= c) cs
+
+flipOnce : List Coordinate -> List Coordinate
+flipOnce blacks = newBlacks where
+  whites : List Coordinate
+  whites = blacksToWhites blacks
+  blacksWithAdjacentBlacks : List (Coordinate,Nat)
+  blacksWithAdjacentBlacks = (\ c => (c,countAdjacentBlacks c blacks)) <$> blacks
+  whitesWithAdjacentBlacks : List (Coordinate,Nat)
+  whitesWithAdjacentBlacks = (\ c => (c,countAdjacentBlacks c blacks)) <$> whites
+  newBlacks : List Coordinate
+  newBlacks = elements (map fst (filter (\ (_,n) => not (n == 0 || n > 2)) blacksWithAdjacentBlacks ++ filter (\ (_,n) => n == 2) whitesWithAdjacentBlacks)) []
+
+flipTimes : Nat -> List Coordinate -> List Coordinate
+flipTimes 0 cs = cs
+flipTimes (S n) cs = flipTimes n $ flipOnce cs
+
 main : IO ()
 main = do
   inputData <- readFile "./data"
@@ -168,10 +208,12 @@ main = do
                 let counts = countElements coords
                     flips = snd <$> counts
                     countBlacks = length $ filter odd flips
-                print countBlacks
+                --print countBlacks
                 -- part 2
                 let blackCountsOdd = filter (\ (_,c) => odd c) counts
                     blacks = fst <$> blackCountsOdd
-                print blacks
+                    newBlacks = flipTimes 100 blacks
+                    countNewBlacks = length newBlacks
+                print countNewBlacks
          pure ()
   pure ()
