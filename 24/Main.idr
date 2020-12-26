@@ -89,7 +89,7 @@ namespace HexVector
   succ = (+ 1)
 
   pred : Integer -> Integer
-  pred = (+ 1)
+  pred x = x - 1
 
   toHexVector : List Direction -> HexVector
   toHexVector [] = MkHexVector 0 0 0
@@ -99,6 +99,18 @@ namespace HexVector
   toHexVector (West :: xs) = record { east $= pred } (toHexVector xs)
   toHexVector (NorthEast :: xs) = record { southwest $= pred } (toHexVector xs)
   toHexVector (NorthWest :: xs) = record { southeast $= pred } (toHexVector xs)
+
+record Coordinate where
+  constructor MkCoordinate
+  xCoord, yCoord : Integer
+
+namespace Coordinate
+  toCoordinate : HexVector -> Coordinate
+  toCoordinate (MkHexVector east southeast southwest) = MkCoordinate x y where
+    x : Integer
+    x = 2 * east + southeast
+    y : Integer
+    y = southeast + southwest
 
 main : IO ()
 main = do
