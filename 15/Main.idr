@@ -29,7 +29,7 @@ namespace Input
   readDigit _ = Nothing
 
   combineReversedDigits : List Nat -> Nat
-  combineReversedDigits [] = 0 
+  combineReversedDigits [] = 0
   combineReversedDigits (n :: ns) = n + 10 * combineReversedDigits ns
 
   reverseNaturalGrammar : Grammar Char False Nat
@@ -51,12 +51,47 @@ namespace Input
 
   export
   readInput : String -> List Nat
-  readInput str = toNatList $ map tok $ toTokenData str where
+  readInput str = reverse $ toNatList $ map tok $ toTokenData str where
     toNatList : List Token -> List Nat
     toNatList [] = []
     toNatList (TComma :: xs) = toNatList xs
     toNatList (TUnknown :: xs) = toNatList xs
     toNatList (TNat n :: xs) = n :: toNatList xs
+
+namespace Part1
+
+  findIndex : Eq a => a -> List a -> Maybe Nat
+  findIndex y [] = Nothing
+  findIndex y (x :: xs) =
+    if x == y
+       then Just 0
+       else (1 +) <$> findIndex y xs
+
+  nextNumber : List Nat -> Nat
+  nextNumber [] = 0
+  nextNumber (x :: xs) =
+    case findIndex x xs of
+         Nothing => 0
+         Just n => 1 + n
+
+  turn : List Nat -> List Nat
+  turn ns = nextNumber ns :: ns
+
+  doTimes : Nat -> (a -> a) -> a -> a
+  doTimes Z _ x = x
+  doTimes (S k) f x = doTimes k f $ f x
+
+  times : List Nat -> Maybe Nat
+  times ns = 2020 `minus` length ns where
+    minus : Nat -> Nat -> Maybe Nat
+    minus Z Z = Just Z
+    minus (S k) Z = Just $ S k
+    minus Z (S k) = Nothing
+    minus (S k) (S k') = k `minus` k'
+
+  export
+  turns : List Nat -> Maybe Nat
+  turns ns = (doTimes <$> times ns <*> pure turn <*> pure ns) >>= head'
 
 main : IO ()
 main = do
@@ -65,5 +100,5 @@ main = do
        Left err => print err
        Right dat => do
          let startingNumbers = readInput dat
-         print startingNumbers
+         traverse_ print $ turns startingNumbers
   pure ()
