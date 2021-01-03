@@ -1,11 +1,14 @@
 module Main
 
 -- base
+import Data.Strings
+import System.File
+
+--contrib
 import Text.Lexer
 import Text.Lexer.Core
 import Text.Parser
 import Text.Parser.Core
-import System.File
 
 record FieldConstraint where
   constructor MkFieldConstraint
@@ -16,8 +19,9 @@ Show FieldConstraint where
   show (MkFieldConstraint field isValid) =
     "FieldConstraint " ++ show field ++ " lambda"
 
-data DataKind = DKString
+data DataKind = DKWord
               | DKNat
+              | DKSpace
               | DKColon
               | DKMinus
               | DKOr
@@ -25,8 +29,9 @@ data DataKind = DKString
               | DKNewline
 
 Eq DataKind where
-  DKString == DKString = True
+  DKWord == DKWord = True
   DKNat == DKNat = True
+  DKSpace == DKSpace = True
   DKColon == DKColon = True
   DKMinus == DKMinus = True
   DKOr == DKOr = True
@@ -35,11 +40,12 @@ Eq DataKind where
   _ == _ = True
 
 TokenKind DataKind where
-  TokType DKString = String
+  TokType DKWord = String
   TokType DKNat = Nat
   TokType _ = ()
-  tokValue DKString x = x
+  tokValue DKWord x = x
   tokValue DKNat x = integerToNat $ cast x
+  tokValue DKSpace _ = ()
   tokValue DKColon _ = ()
   tokValue DKMinus _ = ()
   tokValue DKOr _ = ()
@@ -53,18 +59,25 @@ tokenMap = toTokenMap
   , (exact "or", DKOr)
   , (is ',', DKComma)
   , (newline, DKNewline)
+  , (spaces, DKSpace)
+  , (alphas, DKWord)
   , (digits, DKNat)
-  , (some (alpha <+> is ' '), DKString)
   ]
+
+wordsGrammar : Grammar (Token DataKind) False String
+wordsGrammar = unwords <$> (match DKColon `sepBy` match DKWord) where
 
 fieldConstraintGrammar : Grammar (Token DataKind) True FieldConstraint
 fieldConstraintGrammar = do
-  field <- match DKString
+  field <- wordsGrammar
   match DKColon
+  match DKSpace
   xMin <- match DKNat
   match DKMinus
   xMax <- match DKNat
+  match DKSpace
   match DKOr
+  match DKSpace
   yMin <- match DKNat
   match DKMinus
   yMax <- match DKNat
@@ -83,30 +96,15 @@ dataGrammar : Grammar (Token DataKind) True (List FieldConstraint, List Nat, Lis
 dataGrammar = do
   fieldConstraints <- many fieldConstraintGrammar
   match DKNewline
-  myTicket <- ticketGrammar
-  match DKNewline
-  nearbyTickets <- many ticketGrammar
-  eof
-  pure (fieldConstraints, myTicket, nearbyTickets)
-
---partial
---fieldConstraintParser : Parser FieldConstraint
---fieldConstraintParser = do
---  field <- takeWhile (/= ':')
---  --char ' '
---  xMin <- takeWhile (/= '-') >>= parse natParser
---  xMax <- takeWhile (/= ' ')
---  string "or "
---  yMin <- takeWhile (/= '-')
---  yMax <- takeWhile (/= '\n')
---  let constraint : Nat -> Bool
---      constraint n = n >= xMin && n <= xMax && n >= yMin && n <= yMax
---  pure $ MkFieldConstraint field $ const True -- constraint
---
---ticketParser : Parser $ List Nat
---
---dataParser : Parser ()
---dataParser = ?dataParserRhs
+  pure (fieldConstraints, [], [])
+  --wordsGrammar
+  --match DKColon
+  --match DKNewline
+  --myTicket <- ticketGrammar
+  --match DKNewline
+  --nearbyTickets <- many ticketGrammar
+  --eof
+  --pure (fieldConstraints, myTicket, nearbyTickets)
 
 main : IO ()
 main = do
@@ -116,7 +114,7 @@ main = do
        (Right inputData) => do
          let (tokens, _) = lex tokenMap inputData
              parsed = parse dataGrammar $ tok <$> tokens
-         print $ length tokens
+         print $ (text . tok) <$> tokens
          case parsed of
               Left (Error err _) => putStrLn err
               Right (sol, _) => do
