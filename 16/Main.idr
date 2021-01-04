@@ -221,9 +221,45 @@ namespace Part2
   workingIndicess : {n : Nat} -> Vect n (Vect n Bool) -> Vect n (List (Fin n))
   workingIndicess xss = workingIndices <$> xss
 
-  sudoku : {n : Nat} -> Vect n (List (Fin n)) -> List (Vect n (Fin n))
-  sudoku [] = []
-  sudoku x = ?x
+  maxByLen : (max : Maybe (Nat,(a,List a))) -> List (Lazy (a,(List a))) -> Maybe (a,List a)
+  maxByLen Nothing [] = Nothing
+  maxByLen (Just (maxN,maxV)) [] = Just maxV
+  maxByLen Nothing ((vv,vl)::vs) = maxByLen (Just (length vl,(vv,vl))) vs
+  maxByLen (Just (maxN,maxV)) ((vv,vl)::vs) = if length vl > maxN
+                                                 then maxByLen (Just (length vl,(vv,vl))) vs
+                                                 else maxByLen (Just (maxN,maxV)) vs
+
+  export
+  sudoku : {n : Nat} -> (rows : List (List (Fin n))) -> (taken : List (Fin n)) -> List (Fin n)
+  sudoku [] _ = []
+  sudoku (row::rows) taken =
+    case next of
+         Nothing => []
+         Just (x,xs) => x :: xs
+    where
+      f : Fin n -> Maybe (List (Fin n))
+
+      notTaken : Fin n -> Bool
+      notTaken x = not $ x `elem` taken
+
+      finsToTry : List (Fin n)
+      finsToTry = filter notTaken row
+
+      sudokuNext : Fin n -> Lazy (Fin n,List (Fin n))
+      sudokuNext x = (x,sudoku rows (x :: taken))
+
+      nexts : List $ Lazy (Fin n, List $ Fin n)
+      nexts = sudokuNext <$> finsToTry
+
+      next : Maybe (Fin n,List (Fin n))
+      next = maxByLen Nothing nexts
+
+  export
+  indexMaybe : Nat -> List a -> Maybe a
+  indexMaybe _ [] = Nothing
+  indexMaybe Z (x::xs) = Just x
+  indexMaybe (S k) (_::xs) = indexMaybe k xs
+
 
 main : IO ()
 main = do
@@ -246,11 +282,16 @@ main = do
                      Nothing => pure ()
                      Just safeNearbyTickets' => do
                                  -- constraints outside, numbers inside
-                       let valids' = transpose <$> areValid fieldConstraints' <$> safeNearbyTickets'
-                           valids = foldVectAnd valids'
-                           validIndices = workingIndicess valids
-                       print valids
-                       print (map finToNat <$> validIndices)
+                       --let valids' = transpose <$> areValid fieldConstraints' <$> safeNearbyTickets'
+                       --    valids = foldVectAnd valids'
+                       --    validIndices = workingIndicess valids
+                       --    --sol2 = sudoku (toList $ map toList validIndices) []
+                       let sol2 : List Nat
+                           sol2 = [5, 1, 8, 2, 15, 11, 17, 16, 0, 6, 4, 7, 18, 12, 10, 14, 19, 3, 13, 9]
+                           inds : List Nat
+                           inds = take 6 sol2
+                       let nums = indexMaybe <$> inds <*> pure myTicket
+                       print $ map product $ sequence $ nums
                        pure ()
                 pure ()
          pure ()
