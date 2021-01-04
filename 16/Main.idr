@@ -1,8 +1,10 @@
 module Main
 
 -- base
+import Data.Fin
 import Data.List
 import Data.Strings
+import Data.Vect
 import System.File
 
 --contrib
@@ -171,6 +173,58 @@ namespace Part1
       removeWhenErr [] fields = Just fields
       removeWhenErr _ _ = Nothing
 
+namespace Part2
+  fromList : (n : Nat) -> List a -> Maybe (Vect n a)
+  fromList Z [] = Just []
+  fromList Z (_::_) = Nothing
+  fromList (S k) [] = Nothing
+  fromList (S k) (x::xs) = [| pure x :: fromList k xs |]
+
+  export
+  fromLists : (n : Nat) -> (xss : List (List a)) -> Maybe (List (Vect n a))
+  fromLists n [] = Just []
+  fromLists n (xs :: xss) = [| fromList n xs :: fromLists n xss  |]
+
+  -- outside Vect for numbers, inside Vect for constraints
+  export
+  areValid : {n : Nat} -> (fieldConstraints : Vect n FieldConstraint) -> (numbers : Vect n Nat) -> Vect n (Vect n (Bool))
+  areValid fieldConstraints numbers =
+    ((isValid <$> fieldConstraints) <*>) <$> (pure <$> numbers)
+
+  vectAnd : Vect n Bool -> Vect n Bool -> Vect n Bool
+  vectAnd [] [] = []
+  vectAnd (True::xs) (True::ys) = True :: vectAnd xs ys
+  vectAnd (_::xs) (_::ys) = False :: vectAnd xs ys
+
+  -- outside Vect for constraints, inside Vect for numbers
+  vectVectAnd : {n : Nat} -> Vect n (Vect n Bool) -> Vect n (Vect n Bool) -> Vect n (Vect n Bool)
+  vectVectAnd xs ys = vectAnd <$> xs <*> ys
+
+  export
+  foldVectAnd : {n : Nat} -> List (Vect n (Vect n Bool)) -> Vect n (Vect n Bool)
+  foldVectAnd bs = foldl vectVectAnd (pure (pure True)) bs
+
+  allFins : {n : Nat} -> List $ Fin n
+  allFins with (n)
+    allFins | Z = []
+    allFins | (S k) = FZ :: (FS <$> allFins)
+
+  export
+  workingIndices : {n : Nat} -> Vect n Bool -> List (Fin n)
+  workingIndices [] = []
+  workingIndices xs = catMaybes $ zipWith f (toList xs) allFins where
+    f : Bool -> Fin n -> Maybe $ Fin n
+    f True x = Just x
+    f False x = Nothing
+
+  export
+  workingIndicess : {n : Nat} -> Vect n (Vect n Bool) -> Vect n (List (Fin n))
+  workingIndicess xss = workingIndices <$> xss
+
+  sudoku : {n : Nat} -> Vect n (List (Fin n)) -> List (Vect n (Fin n))
+  sudoku [] = []
+  sudoku x = ?x
+
 main : IO ()
 main = do
   inputData <- readFile "./data"
@@ -186,6 +240,18 @@ main = do
                     ans1 = sum $ concat ticketErrors
                 --print ans1
                 let safeNearbyTickets = removeWhenTicketError fieldConstraints nearbyTickets
+                    fieldConstraints' = fromList fieldConstraints
+                    safeNearbyTickets' = fromLists (length fieldConstraints) safeNearbyTickets
+                case safeNearbyTickets' of
+                     Nothing => pure ()
+                     Just safeNearbyTickets' => do
+                                 -- constraints outside, numbers inside
+                       let valids' = transpose <$> areValid fieldConstraints' <$> safeNearbyTickets'
+                           valids = foldVectAnd valids'
+                           validIndices = workingIndicess valids
+                       print valids
+                       print (map finToNat <$> validIndices)
+                       pure ()
                 pure ()
          pure ()
   pure ()
