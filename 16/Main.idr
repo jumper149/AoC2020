@@ -1,6 +1,7 @@
 module Main
 
 -- base
+import Data.List
 import Data.Strings
 import System.File
 
@@ -109,7 +110,7 @@ namespace Parsing
     yMax <- match DKNat
     match DKNewline
     let constraint : Nat -> Bool
-        constraint a = a >= xMin && a <= xMax && a >= yMin && a <= yMax
+        constraint a = a >= xMin && a <= xMax || a >= yMin && a <= yMax
     pure $ MkFieldConstraint field constraint
 
   ticketGrammar : Grammar (Token DataKind) True (List Nat)
@@ -141,6 +142,35 @@ namespace Parsing
     eof
     pure (fieldConstraints, myTicket, nearbyTickets)
 
+namespace Part1
+  zipper : List (a -> b) -> List a -> List b
+  zipper [] ys = []
+  zipper xs [] = []
+  zipper (x::xs) (y::ys) = x y :: zipper xs ys
+
+  export
+  countTicketErrors : (fieldConstraints : List FieldConstraint) -> (fields : List Nat) -> List Nat
+  countTicketErrors fieldConstraints fields =
+    map fst $ filter (not . snd) $ map g $ f (isValid <$> fieldConstraints) <$> fields where
+      f : List (Nat -> Bool) -> Nat -> (Nat,List Bool)
+      f fs n = (n,fs <*> pure n)
+      any : List Bool -> Bool
+      any [] = False
+      any (True::xs) = True
+      any (False::xs) = any xs
+      g : (Nat,List Bool) -> (Nat,Bool)
+      g (n,bs) = (n, any bs)
+
+  export
+  removeWhenTicketError : (fieldConstraints : List FieldConstraint) -> (fieldss : List (List Nat)) -> List (List Nat)
+  removeWhenTicketError fieldConstraints fieldss =
+    catMaybes $ zipWith removeWhenErr errss fieldss where
+      errss : List $ List Nat
+      errss = countTicketErrors fieldConstraints <$> fieldss
+      removeWhenErr : (err : List Nat) -> (fields : List Nat) -> Maybe (List Nat)
+      removeWhenErr [] fields = Just fields
+      removeWhenErr _ _ = Nothing
+
 main : IO ()
 main = do
   inputData <- readFile "./data"
@@ -152,8 +182,10 @@ main = do
          case parsed of
               Left (Error err _) => putStrLn err
               Right ((fieldConstraints, myTicket, nearbyTickets), debugParsed) => do
-                print fieldConstraints
-                print myTicket
-                print nearbyTickets
+                let ticketErrors = countTicketErrors fieldConstraints <$> nearbyTickets
+                    ans1 = sum $ concat ticketErrors
+                --print ans1
+                let safeNearbyTickets = removeWhenTicketError fieldConstraints nearbyTickets
+                pure ()
          pure ()
   pure ()
