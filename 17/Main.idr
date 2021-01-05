@@ -234,6 +234,19 @@ namespace ParserCombination
           pure ()
     Just g
 
+  contains8Or11 : List Nat -> Bool
+  contains8Or11 [] = False
+  contains8Or11 (8 :: _) = True
+  contains8Or11 (11 :: _) = True
+  contains8Or11 (_ :: ns) = contains8Or11 ns
+
+  fromDepPair : (xs : List a ** NonEmpty xs) -> List a
+  fromDepPair (xs ** _) = xs
+
+  contains8Or11' : Ruleset -> Bool
+  contains8Or11' (References refs) = contains8Or11 $ fromDepPair refs
+  contains8Or11' _ = False
+
   grammar' : (ruleset : Rule) -> (grammars : TestGrammarMap) -> Maybe TestGrammar
   grammar' (MkRule 8 _) grammars = newGrammar8 grammars
   grammar' (MkRule 11 _) grammars = newGrammar11 grammars
@@ -250,7 +263,9 @@ namespace ParserCombination
          Just (testGrammars ** nonEmptyTestGrammarProof) =>
            Just $ foldl1 combineTestGrammars testGrammars
   grammar' (MkRule _ (Option leftRuleset rightRuleset)) grammars =
-    [| grammar' (MkRule 0 leftRuleset) grammars <|> grammar' (MkRule 0 rightRuleset) grammars |]
+    if contains8Or11' leftRuleset
+       then [| grammar' (MkRule 0 rightRuleset) grammars <|> grammar' (MkRule 0 leftRuleset) grammars |]
+       else [| grammar' (MkRule 0 leftRuleset) grammars <|> grammar' (MkRule 0 rightRuleset) grammars |]
 
   grammar'Map' : (rules : List Rule) -> TestGrammarMap -> TestGrammarMap
   grammar'Map' [] acc = acc
