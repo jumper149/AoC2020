@@ -31,12 +31,12 @@ namespace Rules
 
   data Ruleset : Type where
     Match : Terminal -> Ruleset
-    References : List Nat -> Ruleset
+    References : (references : List Nat ** NonEmpty references) -> Ruleset
     Option : Ruleset -> Ruleset -> Ruleset
 
   Show Ruleset where
     show (Match terminal) = "Match " ++ show terminal
-    show (References ns) = "References " ++ show ns
+    show (References (ns**_)) = "References " ++ show ns
     show (Option x y) = "Option " ++ show x ++ " " ++ show y
 
   record Rule where
@@ -44,10 +44,10 @@ namespace Rules
     number : Nat
     ruleset : Ruleset
 
-  Eq Rule where
+  [EqNumber] Eq Rule where
     (MkRule number _) == (MkRule number' _) = number == number'
 
-  Ord Rule where
+  [OrdNumber] Ord Rule using EqNumber where
     compare (MkRule number _) (MkRule number' _) = compare number number'
 
   Show Rule where
@@ -106,7 +106,7 @@ namespace RulesParsing
       match RKQuotationMarks
       pure $ Match terminal
     grammarReferences : Grammar (Token RulesKind) True Ruleset
-    grammarReferences = References <$> sepBy1 (match RKSpace) (match RKNumber)
+    grammarReferences = References <$> sepBy1' (match RKSpace) (match RKNumber)
     grammarOption : Grammar (Token RulesKind) True Ruleset
     grammarOption = do
       left <- (grammarMatch <|> grammarReferences)
@@ -139,6 +139,13 @@ namespace ParserCombination
   TestGrammar : Bool -> Type
   TestGrammar consumes = Grammar Terminal consumes ()
 
+  lookupTestGrammar : SortedMap Nat (TestGrammar True) -> Nat -> TestGrammar True
+
+  lookupTestGrammars : SortedMap Nat (TestGrammar True) -> (references : List Nat ** NonEmpty references) -> (grammars : List (TestGrammar True) ** NonEmpty grammars)
+
+  combineTestGrammars : TestGrammar True -> TestGrammar True -> TestGrammar True
+  combineTestGrammars x y = x *> y
+
   grammar' : (rules : SortedMap Nat (TestGrammar True)) -> (ruleset : Ruleset) -> TestGrammar True
   grammar' rules (Match char) =
     terminal "Failed to parse Terminal" test where
@@ -146,8 +153,11 @@ namespace ParserCombination
       test x = if x == char
                   then Just ()
                   else Nothing
-  grammar' rules (References references) = ?grammar'_rhs'
-  grammar' rules (Option leftRuleset rightRuleset) = ?grammar'_rhs''
+  grammar' rules (References references) =
+    let (testGrammars ** nonEmptyTestGrammarProof) = lookupTestGrammars rules references
+    in foldl1 combineTestGrammars testGrammars where
+  grammar' rules (Option leftRuleset rightRuleset) =
+    grammar' rules leftRuleset <|> grammar' rules rightRuleset
 
   grammar : (rules : List Rule) -> Grammar Terminal True ()
   grammar rules = ?grammar_rhs
@@ -171,7 +181,7 @@ main = do
   messagesData <- readFile "./messages"
   case (lines <$> rulesData, lines <$> messagesData) of
        (Right rulesData, Right messagesData) => do
-         let mbRules = sort <$> sequence (readRule <$> rulesData)
+         let mbRules = sort @{OrdNumber} <$> sequence (readRule <$> rulesData)
              mbMessages = traverse toTerminals messagesData
          case (mbRules, mbMessages) of
               (Just rules, Just messages) => do
