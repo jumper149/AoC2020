@@ -134,6 +134,8 @@ namespace RulesParsing
          Left _ => Nothing
          Right (rule, _) => Just rule
 
+----------------------------------------------------------------------------------------------------
+
 namespace ParserCombination
 
   ruleMap : List Rule -> SortedMap Nat Ruleset
@@ -141,6 +143,7 @@ namespace ParserCombination
     extract : Rule -> (Nat, Ruleset)
     extract (MkRule number ruleset) = (number, ruleset)
 
+  public export
   TestGrammar : Type
   TestGrammar = Grammar Terminal True ()
 
@@ -207,13 +210,6 @@ namespace ParserCombination
   grammar0 : (rules : List Rule) -> Maybe TestGrammar
   grammar0 rules = lookup 0 $ grammarMap rules
 
-  export
-  testMessage : TestGrammar -> List Terminal -> Bool
-  testMessage grammar word =
-    case parse (grammar <* eof) word of
-         Left _ => False
-         Right _ => True
-
 ----------------------------------------------------------------------------------------------------
 
   newGrammar8 : TestGrammarMap -> Maybe TestGrammar
@@ -269,6 +265,8 @@ namespace ParserCombination
   grammar0' : (rules : List Rule) -> Maybe TestGrammar
   grammar0' rules = lookup 0 $ grammar'Map rules
 
+----------------------------------------------------------------------------------------------------
+
 namespace MessagesParsing
 
   toTerminal : Char -> Maybe Terminal
@@ -279,6 +277,13 @@ namespace MessagesParsing
   export
   toTerminals : String -> Maybe $ List Terminal
   toTerminals message = traverse toTerminal $ unpack message
+
+  export
+  testMessage : TestGrammar -> List Terminal -> Bool
+  testMessage grammar word =
+    case parse (grammar <* eof) word of
+         Left _ => False
+         Right _ => True
 
 ----------------------------------------------------------------------------------------------------
 
