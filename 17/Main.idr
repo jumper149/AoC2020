@@ -6,6 +6,7 @@ import Data.Strings
 import System.File
 
 -- contrib
+import Data.SortedMap
 import Text.Lexer
 import Text.Lexer.Core
 import Text.Parser
@@ -26,7 +27,7 @@ namespace Rules
 
   Show Terminal where
     show A = "A"
-    show B = "A"
+    show B = "B"
 
   data Ruleset : Type where
     Match : Terminal -> Ruleset
@@ -42,6 +43,12 @@ namespace Rules
     constructor MkRule
     number : Nat
     ruleset : Ruleset
+
+  Eq Rule where
+    (MkRule number _) == (MkRule number' _) = number == number'
+
+  Ord Rule where
+    compare (MkRule number _) (MkRule number' _) = compare number number'
 
   Show Rule where
     show (MkRule number ruleset) = "Rule " ++ show number ++ " " ++ show ruleset
@@ -127,6 +134,35 @@ namespace RulesParsing
          Left _ => Nothing
          Right (rule, _) => Just rule
 
+namespace ParserCombination
+
+  TestGrammar : Bool -> Type
+  TestGrammar consumes = Grammar Terminal consumes ()
+
+  grammar' : (rules : SortedMap Nat (TestGrammar True)) -> (ruleset : Ruleset) -> TestGrammar True
+  grammar' rules (Match char) =
+    terminal "Failed to parse Terminal" test where
+      test : Terminal -> Maybe ()
+      test x = if x == char
+                  then Just ()
+                  else Nothing
+  grammar' rules (References references) = ?grammar'_rhs'
+  grammar' rules (Option leftRuleset rightRuleset) = ?grammar'_rhs''
+
+  grammar : (rules : List Rule) -> Grammar Terminal True ()
+  grammar rules = ?grammar_rhs
+
+namespace MessagesParsing
+
+  toTerminal : Char -> Maybe Terminal
+  toTerminal 'a' = Just A
+  toTerminal 'b' = Just B
+  toTerminal _ = Nothing
+
+  export
+  toTerminals : String -> Maybe $ List Terminal
+  toTerminals message = traverse toTerminal $ unpack message
+
 ----------------------------------------------------------------------------------------------------
 
 main : IO ()
@@ -135,7 +171,13 @@ main = do
   messagesData <- readFile "./messages"
   case (lines <$> rulesData, lines <$> messagesData) of
        (Right rulesData, Right messagesData) => do
-         print $ readRule <$> rulesData
+         let mbRules = sort <$> sequence (readRule <$> rulesData)
+             mbMessages = traverse toTerminals messagesData
+         case (mbRules, mbMessages) of
+              (Just rules, Just messages) => do
+                print rules
+                print messages
+              _ => pure ()
          pure ()
        _ => pure ()
   pure ()
