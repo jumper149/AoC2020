@@ -136,31 +136,83 @@ namespace RulesParsing
 
 namespace ParserCombination
 
-  TestGrammar : Bool -> Type
-  TestGrammar consumes = Grammar Terminal consumes ()
+  ruleMap : List Rule -> SortedMap Nat Ruleset
+  ruleMap rules = fromList $ extract <$> rules where
+    extract : Rule -> (Nat, Ruleset)
+    extract (MkRule number ruleset) = (number, ruleset)
 
-  lookupTestGrammar : SortedMap Nat (TestGrammar True) -> Nat -> TestGrammar True
+  TestGrammar : Type
+  TestGrammar = Grammar Terminal True ()
 
-  lookupTestGrammars : SortedMap Nat (TestGrammar True) -> (references : List Nat ** NonEmpty references) -> (grammars : List (TestGrammar True) ** NonEmpty grammars)
+  TestGrammarMap : Type
+  TestGrammarMap = SortedMap Nat TestGrammar
 
-  combineTestGrammars : TestGrammar True -> TestGrammar True -> TestGrammar True
+  lookupTestGrammar : TestGrammarMap -> Nat -> Maybe TestGrammar
+  lookupTestGrammar = flip lookup
+
+  mapOnDPair : (f : a -> b) -> (xs : List a ** NonEmpty xs) -> (ys : List b ** NonEmpty ys)
+  mapOnDPair f ([x] ** IsNonEmpty) = ([f x] ** IsNonEmpty)
+  mapOnDPair f ((x :: x' :: xs) ** IsNonEmpty) with (mapOnDPair f ((x' :: xs) ** IsNonEmpty))
+    mapOnDPair f ((x :: x' :: xs) ** IsNonEmpty) | ((y :: ys) ** IsNonEmpty) = ((f x :: y :: ys) ** IsNonEmpty)
+
+  lookupTestGrammars' : TestGrammarMap -> (references : List Nat ** NonEmpty references) ->
+                                          (grammars : List (Maybe TestGrammar) ** NonEmpty grammars)
+  lookupTestGrammars' map refs = mapOnDPair (lookupTestGrammar map) refs
+
+  takeMaybeOutProof : (xs : List (Maybe a) ** NonEmpty xs) -> Maybe (ys : List a ** NonEmpty ys)
+  takeMaybeOutProof ([ Nothing ] ** IsNonEmpty) = Nothing
+  takeMaybeOutProof ([ Just x ] ** IsNonEmpty) = Just ([ x ] ** IsNonEmpty)
+  takeMaybeOutProof ((Nothing :: x' :: xs) ** IsNonEmpty) = Nothing
+  takeMaybeOutProof ((Just x :: x' :: xs) ** IsNonEmpty) with (takeMaybeOutProof ((x' :: xs) ** IsNonEmpty))
+    takeMaybeOutProof ((Just x :: x' :: xs) ** IsNonEmpty) | Nothing = Nothing
+    takeMaybeOutProof ((Just x :: x' :: xs) ** IsNonEmpty) | (Just dpair) = Just $ f x (g dpair) where
+      f : a -> List a -> (bs : List a ** NonEmpty bs)
+      f q qs = ((q :: qs) ** IsNonEmpty)
+      g : (x : List a ** NonEmpty x) -> List a
+      g (x ** y) = x
+
+  lookupTestGrammars : TestGrammarMap -> (references : List Nat ** NonEmpty references) ->
+                                         Maybe (grammars : List TestGrammar ** NonEmpty grammars)
+  lookupTestGrammars map refs = takeMaybeOutProof $ lookupTestGrammars' map refs
+
+  combineTestGrammars : TestGrammar -> TestGrammar -> TestGrammar
   combineTestGrammars x y = x *> y
 
-  grammar' : (rules : SortedMap Nat (TestGrammar True)) -> (ruleset : Ruleset) -> TestGrammar True
-  grammar' rules (Match char) =
-    terminal "Failed to parse Terminal" test where
+  grammar' : (ruleset : Ruleset) -> (grammars : TestGrammarMap) -> Maybe TestGrammar
+  grammar' (Match char) grammars =
+    Just $ terminal "Failed to parse Terminal" test where
       test : Terminal -> Maybe ()
       test x = if x == char
                   then Just ()
                   else Nothing
-  grammar' rules (References references) =
-    let (testGrammars ** nonEmptyTestGrammarProof) = lookupTestGrammars rules references
-    in foldl1 combineTestGrammars testGrammars where
-  grammar' rules (Option leftRuleset rightRuleset) =
-    grammar' rules leftRuleset <|> grammar' rules rightRuleset
+  grammar' (References references) grammars = do
+    let testGrammarsStuff = lookupTestGrammars grammars references
+    case testGrammarsStuff of
+         Nothing => Nothing
+         Just (testGrammars ** nonEmptyTestGrammarProof) =>
+           Just $ foldl1 combineTestGrammars testGrammars
+  grammar' (Option leftRuleset rightRuleset) grammars =
+    [| grammar' leftRuleset grammars <|> grammar' rightRuleset grammars |]
 
-  grammar : (rules : List Rule) -> Grammar Terminal True ()
-  grammar rules = ?grammar_rhs
+  grammarMap' : (rules : List Rule) -> TestGrammarMap -> TestGrammarMap
+  grammarMap' [] acc = acc
+  grammarMap' (rule@(MkRule number ruleset) :: rules) acc with (grammar' ruleset acc)
+    grammarMap' (rule@(MkRule number ruleset) :: rules) acc | Nothing = grammarMap' (rules ++ [rule]) acc
+    grammarMap' (rule@(MkRule number ruleset) :: rules) acc | Just g = grammarMap' rules $ insert number g acc
+
+  grammarMap : (rules : List Rule) -> TestGrammarMap
+  grammarMap rules = grammarMap' rules empty
+
+  export
+  grammar0 : (rules : List Rule) -> Maybe TestGrammar
+  grammar0 rules = lookup 0 $ grammarMap rules
+
+  export
+  testMessage : TestGrammar -> List Terminal -> Bool
+  testMessage grammar word =
+    case parse (grammar <* eof) word of
+         Left _ => False
+         Right _ => True
 
 namespace MessagesParsing
 
@@ -185,8 +237,12 @@ main = do
              mbMessages = traverse toTerminals messagesData
          case (mbRules, mbMessages) of
               (Just rules, Just messages) => do
-                print rules
-                print messages
+                case grammar0 rules of
+                     Nothing => print "noo"
+                     Just grammar => do
+                       let tests = testMessage grammar <$> messages
+                           countParsed = length $ filter id tests
+                       print countParsed
               _ => pure ()
          pure ()
        _ => pure ()
