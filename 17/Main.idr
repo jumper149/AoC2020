@@ -178,25 +178,25 @@ namespace ParserCombination
   combineTestGrammars : TestGrammar -> TestGrammar -> TestGrammar
   combineTestGrammars x y = x *> y
 
-  grammar' : (ruleset : Ruleset) -> (grammars : TestGrammarMap) -> Maybe TestGrammar
-  grammar' (Match char) grammars =
+  grammar : (ruleset : Ruleset) -> (grammars : TestGrammarMap) -> Maybe TestGrammar
+  grammar (Match char) grammars =
     Just $ terminal "Failed to parse Terminal" test where
       test : Terminal -> Maybe ()
       test x = if x == char
                   then Just ()
                   else Nothing
-  grammar' (References references) grammars = do
+  grammar (References references) grammars = do
     let testGrammarsStuff = lookupTestGrammars grammars references
     case testGrammarsStuff of
          Nothing => Nothing
          Just (testGrammars ** nonEmptyTestGrammarProof) =>
            Just $ foldl1 combineTestGrammars testGrammars
-  grammar' (Option leftRuleset rightRuleset) grammars =
-    [| grammar' leftRuleset grammars <|> grammar' rightRuleset grammars |]
+  grammar (Option leftRuleset rightRuleset) grammars =
+    [| grammar leftRuleset grammars <|> grammar rightRuleset grammars |]
 
   grammarMap' : (rules : List Rule) -> TestGrammarMap -> TestGrammarMap
   grammarMap' [] acc = acc
-  grammarMap' (rule@(MkRule number ruleset) :: rules) acc with (grammar' ruleset acc)
+  grammarMap' (rule@(MkRule number ruleset) :: rules) acc with (grammar ruleset acc)
     grammarMap' (rule@(MkRule number ruleset) :: rules) acc | Nothing = grammarMap' (rules ++ [rule]) acc
     grammarMap' (rule@(MkRule number ruleset) :: rules) acc | Just g = grammarMap' rules $ insert number g acc
 
@@ -213,6 +213,61 @@ namespace ParserCombination
     case parse (grammar <* eof) word of
          Left _ => False
          Right _ => True
+
+----------------------------------------------------------------------------------------------------
+
+  newGrammar8 : TestGrammarMap -> Maybe TestGrammar
+  newGrammar8 gmap = do
+    grammar42 <- lookupTestGrammar gmap 42
+    let g : TestGrammar
+        g = do
+          grammar42
+          optional g
+          pure ()
+    Just $ g
+
+  newGrammar11 : TestGrammarMap -> Maybe TestGrammar
+  newGrammar11 gmap = do
+    grammar42 <- lookupTestGrammar gmap 42
+    grammar31 <- lookupTestGrammar gmap 31
+    let g : TestGrammar
+        g = do
+          grammar42
+          optional g
+          grammar31
+          pure ()
+    Just g
+
+  grammar' : (ruleset : Rule) -> (grammars : TestGrammarMap) -> Maybe TestGrammar
+  grammar' (MkRule 8 _) grammars = newGrammar8 grammars
+  grammar' (MkRule 11 _) grammars = newGrammar11 grammars
+  grammar' (MkRule _ (Match char)) grammars =
+    Just $ terminal "Failed to parse Terminal" test where
+      test : Terminal -> Maybe ()
+      test x = if x == char
+                  then Just ()
+                  else Nothing
+  grammar' (MkRule _ (References references)) grammars = do
+    let testGrammarsStuff = lookupTestGrammars grammars references
+    case testGrammarsStuff of
+         Nothing => Nothing
+         Just (testGrammars ** nonEmptyTestGrammarProof) =>
+           Just $ foldl1 combineTestGrammars testGrammars
+  grammar' (MkRule _ (Option leftRuleset rightRuleset)) grammars =
+    [| grammar' (MkRule 0 leftRuleset) grammars <|> grammar' (MkRule 0 rightRuleset) grammars |]
+
+  grammar'Map' : (rules : List Rule) -> TestGrammarMap -> TestGrammarMap
+  grammar'Map' [] acc = acc
+  grammar'Map' (rule@(MkRule number ruleset) :: rules) acc with (grammar' rule acc)
+    grammar'Map' (rule@(MkRule number ruleset) :: rules) acc | Nothing = grammar'Map' (rules ++ [rule]) acc
+    grammar'Map' (rule@(MkRule number ruleset) :: rules) acc | Just g = grammar'Map' rules $ insert number g acc
+
+  grammar'Map : (rules : List Rule) -> TestGrammarMap
+  grammar'Map rules = grammar'Map' rules empty
+
+  export
+  grammar0' : (rules : List Rule) -> Maybe TestGrammar
+  grammar0' rules = lookup 0 $ grammar'Map rules
 
 namespace MessagesParsing
 
@@ -237,8 +292,14 @@ main = do
              mbMessages = traverse toTerminals messagesData
          case (mbRules, mbMessages) of
               (Just rules, Just messages) => do
-                case grammar0 rules of
-                     Nothing => print "noo"
+                --case grammar0 rules of
+                --     Nothing => putStrLn "Can't construct grammar0"
+                --     Just grammar => do
+                --       let tests = testMessage grammar <$> messages
+                --           countParsed = length $ filter id tests
+                --       print countParsed
+                case grammar0' rules of
+                     Nothing => putStrLn "Can't construct grammar0'"
                      Just grammar => do
                        let tests = testMessage grammar <$> messages
                            countParsed = length $ filter id tests
