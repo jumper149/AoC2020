@@ -1,0 +1,38 @@
+name:                main
+version:             0.0.0.0
+synopsis:            AoC2020 Main
+--description:         
+license:             BSD3
+--license-file:        
+author:              Felix Springer
+maintainer:          felixspringer149@gmail.com
+homepage:            https://github.com/jumper149/AoC2020
+bug-reports:         https://github.com/jumper149/AoC2020/issues
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+cabal-version:       >= 1.10
+
+executable main
+  main-is:             Main.hs
+  build-depends:       base
+                     , containers
+                     , mtl
+                     , parsec
+                     , text
+                     , vector
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  default-extensions:  ConstraintKinds
+                       DataKinds
+                       DeriveGeneric
+                       FlexibleContexts
+                       FlexibleInstances
+                       FunctionalDependencies
+                       GeneralizedNewtypeDeriving
+                       MultiParamTypeClasses
+                       OverloadedStrings
+                       RankNTypes
+                       StandaloneDeriving
+                       TypeApplications
+                       TypeFamilies
+  ghc-options:         -Wall
