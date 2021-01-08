@@ -8,6 +8,7 @@ import Text.Parsec.String
 data Coordinate = Coordinate { xCoordinate :: Integer
                              , yCoordinate :: Integer
                              , zCoordinate :: Integer
+                             , wCoordinate :: Integer
                              }
               deriving (Eq, Ord, Read, Show)
 
@@ -29,14 +30,15 @@ dataParser = do
               boolsToActiveCoords (False:bs) (_:cs) = boolsToActiveCoords bs cs
               boolsToActiveCoords _ _ = undefined
               coords :: [[Coordinate]]
-              coords = [ [ Coordinate x y 0 | x <- [ 0 .. ] ] | y <- [ 0 .. ] ]
+              coords = [ [ Coordinate x y 0 0 | x <- [ 0 .. ] ] | y <- [ 0 .. ] ]
 
 neighbors :: Coordinate -> [Coordinate]
-neighbors c@(Coordinate x y z) = do
+neighbors c@(Coordinate x y z w) = do
     x' <- neighborsInteger x
     y' <- neighborsInteger y
     z' <- neighborsInteger z
-    let c' = Coordinate x' y' z'
+    w' <- neighborsInteger w
+    let c' = Coordinate x' y' z' w'
     filter (c /=) $ pure c'
         where neighborsInteger :: Integer -> [Integer]
               neighborsInteger i = [ pred i, i, succ i]
