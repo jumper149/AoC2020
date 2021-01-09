@@ -202,7 +202,7 @@ namespace Parsing
     match DKSpace
     MkMem address <$> grammarVal where
       grammarVal : Grammar (Token DataKind) True Bits
-      grammarVal = (reverse . integerToBits . natToInteger . digitsToNat) <$> (some $ match DKDigit)
+      grammarVal = (reverse . integerToBits . natToInteger . digitsToNat . reverse) <$> (some $ match DKDigit)
 
   countExactly : (n : Nat) -> (p : Grammar tok True a) -> Grammar tok (isSucc n) (Vect n a)
   countExactly Z p = Empty []
@@ -251,6 +251,6 @@ main = do
                 print err
               Right (prog, rest) => do
                 let (endMask, endMemory) = execState initState (traverse_ progLine prog)
-                print $ sum $ bitsToNat <$> toList endMemory
+                print $ sum $ bitsToNat <$> endMemory
          pure ()
   pure ()
