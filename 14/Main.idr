@@ -149,18 +149,12 @@ namespace Parsing
     digitToNat D8 = 8
     digitToNat D9 = 9
 
-  digitsToBits : List Digit -> List Bit
-  digitsToBits [] = []
-  digitsToBits (D0 :: xs) = Zero :: digitsToBits xs
-  digitsToBits (D1 :: xs) = One :: digitsToBits xs
-  digitsToBits (_ :: xs) = ?cantCastDigitToBit
-
-  natToBits : {n : Nat} -> Nat -> Vect n Bit
-  natToBits x with (n)
-    natToBits x | Z = []
-    natToBits x | (S k) = if x `mod` 2 == 0
-                             then Zero :: natToBits (x `div` 2)
-                             else One :: natToBits (x `div` 2)
+  integerToBits : {n : Nat} -> Integer -> Vect n Bit
+  integerToBits x with (n)
+    integerToBits x | Z = []
+    integerToBits x | (S k) = if x `mod` 2 == 0
+                             then Zero :: integerToBits (x `div` 2)
+                             else One :: integerToBits (x `div` 2)
 
   grammarMem : Grammar (Token DataKind) True Mem
   grammarMem = do
@@ -174,7 +168,7 @@ namespace Parsing
     match DKSpace
     MkMem address <$> grammarVal where
       grammarVal : Grammar (Token DataKind) True (Vect 36 Bit)
-      grammarVal = (natToBits . digitsToNat) <$> (some $ match DKDigit)
+      grammarVal = (reverse . integerToBits . natToInteger . digitsToNat) <$> (some $ match DKDigit)
 
   countExactly : (n : Nat) -> (p : Grammar tok True a) -> Grammar tok (isSucc n) (Vect n a)
   countExactly Z p = Empty []
@@ -192,7 +186,6 @@ namespace Parsing
         f _ = fail "Can't parser bit other than 0 or 1"
     grammarX : Grammar (Token DataKind) True (Maybe Bit)
     grammarX = match DKNoBit *> pure Nothing
-
 
   grammarMask : Grammar (Token DataKind) True Mask
   grammarMask = do
