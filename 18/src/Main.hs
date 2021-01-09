@@ -1,49 +1,60 @@
-import Control.Monad (void)
+import Control.Monad
+import Data.Functor
 import Text.Parsec
 import Text.Parsec.String
 
+data Operation = Plus
+               | Times
+               deriving (Bounded, Enum, Eq, Ord, Read, Show)
+
 data Math = MathNum Integer
-          | MathPlus Math Math
-          | MathTimes Math Math
+          | MathOp Operation Math Math
           | MathParens Math
           deriving (Eq, Ord, Read, Show)
+
+data ReversedMath = RMathNum Integer
+                  | RMathOp Operation ReversedMath ReversedMath
+                  | RMathParens ReversedMath
+                  deriving (Eq, Ord, Read, Show)
 
 dataParser :: Parser [Math]
 dataParser = many (mathParser <* newline) <* eof
     where mathParser :: Parser Math
-          mathParser = choice [ try plusParser
-                              , try timesParser
+          mathParser = choice [ try opParser
                               , numParser
                               , parensParser
                               ]
-          plusParser :: Parser Math
-          plusParser = do
+          opParser :: Parser Math
+          opParser = do
               x <- try parensParser <|> numParser
               void space
-              void $ char '+'
+              op <- char '+' $> Plus <|> char '*' $> Times
               void space
               y <- mathParser
-              let expr = MathPlus x y
-              pure expr
-          timesParser :: Parser Math
-          timesParser = do
-              x <- try parensParser <|> numParser
-              void space
-              void $ char '*'
-              void space
-              y <- mathParser
-              let expr = MathTimes x y
+              let expr = MathOp op x y
               pure expr
           parensParser :: Parser Math
-          parensParser = between (char '(') (char ')') mathParser
+          parensParser = between (char ')') (char '(') (MathParens <$> mathParser)
           numParser :: Parser Math
           numParser = MathNum . read <$> many1 digit
 
+evalOp :: Operation -> (Integer -> Integer -> Integer)
+evalOp Plus = (+)
+evalOp Times = (*)
+
+calculate :: Math -> Integer
+calculate (MathNum i) = i
+calculate (MathOp op x y) = evalOp op (calculate x) (calculate y)
+calculate (MathParens m) = calculate m
+
 main :: IO ()
 main = do
-    inputData <- parseFromFile dataParser "./data"
-    case inputData of
+    fileData <- readFile "./data"
+    let reversedFileData = unlines . (reverse <$>) . lines $ fileData
+        reversedInputData = parse dataParser "data" reversedFileData
+    case reversedInputData of
       Left err -> print err
       Right dat -> do
-          print $ head dat
+          let sol1 = sum $ calculate <$> dat
+          print sol1
     return ()
