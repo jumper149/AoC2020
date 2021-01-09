@@ -18,6 +18,17 @@ import Text.Token
 data Bit = Zero
          | One
 
+Eq Bit where
+  Zero == Zero = True
+  One == One = True
+  _ == _ = False
+
+Ord Bit where
+  compare Zero Zero = EQ
+  compare Zero One = LT
+  compare One Zero = GT
+  compare One One = EQ
+
 Show Bit where
   show Zero = "Zero"
   show One = "One"
@@ -73,6 +84,52 @@ bitsToNat = bitsToNat' . reverse where
   bitsToNat' [] = 0
   bitsToNat' (One :: xs) = 1 + 2 * bitsToNat' xs
   bitsToNat' (Zero :: xs) = 0 + 2 * bitsToNat' xs
+
+integerToBits : {n : Nat} -> Integer -> Vect n Bit
+integerToBits x with (n)
+  integerToBits x | Z = []
+  integerToBits x | (S k) = if x `mod` 2 == 0
+                           then Zero :: integerToBits (x `div` 2)
+                           else One :: integerToBits (x `div` 2)
+
+natToBits : Nat -> Bits
+natToBits n = integerToBits $ natToInteger n
+
+Memory' : Type
+Memory' = SortedMap Bits Bits
+
+initState' : (Mask, Memory')
+initState' = (MkMask $ pure Nothing, empty)
+
+applyMaskToAddress' : Vect n (Maybe Bit) -> Vect n Bit -> Vect n (Maybe Bit)
+applyMaskToAddress' [] [] = []
+applyMaskToAddress' (Just Zero :: ms) (a :: as) = Just a :: applyMaskToAddress' ms as
+applyMaskToAddress' (Just One :: ms) (_ :: as) = Just One :: applyMaskToAddress' ms as
+applyMaskToAddress' (Nothing :: ms) (_ :: as) = Nothing :: applyMaskToAddress' ms as
+
+floatingAddresses : Vect n (Maybe Bit) -> List (Vect n Bit)
+floatingAddresses [] = pure []
+floatingAddresses (Nothing :: xs) = (::) <$> [ Zero, One ] <*> floatingAddresses xs
+floatingAddresses (Just x :: xs) = (x ::) <$> floatingAddresses xs
+
+applyMaskToAddress : Mask -> Bits -> List Bits
+applyMaskToAddress (MkMask mask) bs = floatingAddresses $ applyMaskToAddress' mask bs
+
+inserter : Bits -> (key : Bits) -> State (Mask,Memory') ()
+inserter value k = do
+  (mask, memory) <- get
+  let newMemory = insert k value memory
+  put (mask, newMemory)
+
+progLine' : Line -> State (Mask,Memory') ()
+progLine' (Left mask) = do
+  (oldMask, memory) <- get
+  put (mask, memory)
+progLine' (Right (MkMem address value)) = do
+  (mask, memory) <- get
+  let addresses = applyMaskToAddress mask $ natToBits address
+  traverse_ (inserter value) addresses
+  pure ()
 
 namespace Parsing
   data DataKind = DKMask
@@ -182,14 +239,6 @@ namespace Parsing
     digitToNat D8 = 8
     digitToNat D9 = 9
 
-  export
-  integerToBits : {n : Nat} -> Integer -> Vect n Bit
-  integerToBits x with (n)
-    integerToBits x | Z = []
-    integerToBits x | (S k) = if x `mod` 2 == 0
-                             then Zero :: integerToBits (x `div` 2)
-                             else One :: integerToBits (x `div` 2)
-
   grammarMem : Grammar (Token DataKind) True Mem
   grammarMem = do
     match DKMem
@@ -202,7 +251,7 @@ namespace Parsing
     match DKSpace
     MkMem address <$> grammarVal where
       grammarVal : Grammar (Token DataKind) True Bits
-      grammarVal = (reverse . integerToBits . natToInteger . digitsToNat . reverse) <$> (some $ match DKDigit)
+      grammarVal = (reverse . natToBits . digitsToNat . reverse) <$> (some $ match DKDigit)
 
   countExactly : (n : Nat) -> (p : Grammar tok True a) -> Grammar tok (isSucc n) (Vect n a)
   countExactly Z p = Empty []
@@ -250,7 +299,8 @@ main = do
                 print $ text <$> restToks
                 print err
               Right (prog, rest) => do
-                let (endMask, endMemory) = execState initState (traverse_ progLine prog)
+                --let (endMask, endMemory) = execState initState (traverse_ progLine prog)
+                let (endMask, endMemory) = execState initState' (traverse_ progLine' prog)
                 print $ sum $ bitsToNat <$> endMemory
          pure ()
   pure ()
