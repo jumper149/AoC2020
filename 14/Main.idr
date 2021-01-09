@@ -1,5 +1,6 @@
 module Main
 
+import Control.Monad.State
 import Data.List
 import Data.Nat
 import Data.Nat.Views
@@ -7,6 +8,7 @@ import Data.Strings
 import Data.Vect
 import System.File
 
+import Data.SortedMap
 import Text.Lexer
 import Text.Lexer.Core
 import Text.Parser
@@ -20,6 +22,9 @@ Show Bit where
   show Zero = "Zero"
   show One = "One"
 
+Bits : Type
+Bits = Vect 36 Bit
+
 record Mask where
   constructor MkMask
   bits : Vect 36 (Maybe Bit)
@@ -30,7 +35,7 @@ Show Mask where
 record Mem where
   constructor MkMem
   address : Nat
-  value : Vect 36 Bit
+  value : Bits
 
 Show Mem where
   show (MkMem address value) = "Mem " ++ show address ++ " " ++ show value
@@ -40,6 +45,34 @@ Line = Either Mask Mem
 
 Program : Type
 Program = List Line
+
+Memory : Type
+Memory = SortedMap Nat Bits
+
+applyMask : Mask -> Bits -> Bits
+applyMask (MkMask maskBits) valBits = f <$> maskBits <*> valBits where
+  f : Maybe Bit -> Bit -> Bit
+  f Nothing x = x
+  f (Just x) _ = x
+
+initState : (Mask, Memory)
+initState = (MkMask $ pure Nothing, empty)
+
+progLine : Line -> State (Mask,Memory) ()
+progLine (Left mask) = do
+  (oldMask, memory) <- get
+  put (mask, memory)
+progLine (Right (MkMem address value)) = do
+  (mask, oldMemory) <- get
+  let memory = insert address (applyMask mask value) oldMemory
+  put (mask, memory)
+
+bitsToNat : Bits -> Nat
+bitsToNat = bitsToNat' . reverse where
+  bitsToNat' : Vect n Bit -> Nat
+  bitsToNat' [] = 0
+  bitsToNat' (One :: xs) = 1 + 2 * bitsToNat' xs
+  bitsToNat' (Zero :: xs) = 0 + 2 * bitsToNat' xs
 
 namespace Parsing
   data DataKind = DKMask
@@ -149,6 +182,7 @@ namespace Parsing
     digitToNat D8 = 8
     digitToNat D9 = 9
 
+  export
   integerToBits : {n : Nat} -> Integer -> Vect n Bit
   integerToBits x with (n)
     integerToBits x | Z = []
@@ -167,7 +201,7 @@ namespace Parsing
     match DKEquals
     match DKSpace
     MkMem address <$> grammarVal where
-      grammarVal : Grammar (Token DataKind) True (Vect 36 Bit)
+      grammarVal : Grammar (Token DataKind) True Bits
       grammarVal = (reverse . integerToBits . natToInteger . digitsToNat) <$> (some $ match DKDigit)
 
   countExactly : (n : Nat) -> (p : Grammar tok True a) -> Grammar tok (isSucc n) (Vect n a)
@@ -212,7 +246,11 @@ main = do
          let (lexed, debugLexed) = lex tokenMap actualData
              parsed = parse grammarData $ tok <$> lexed
          case parsed of
-              Left (Error err restToks) => print $ text <$> restToks
-              Right (prog, rest) => print prog
+              Left (Error err restToks) => do
+                print $ text <$> restToks
+                print err
+              Right (prog, rest) => do
+                let (endMask, endMemory) = execState initState (traverse_ progLine prog)
+                print $ sum $ bitsToNat <$> toList endMemory
          pure ()
   pure ()
