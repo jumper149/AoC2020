@@ -6,6 +6,7 @@ import Data.Vect
 import System.File
 
 -- contrib
+import Data.SortedMap
 import Text.Lexer
 import Text.Lexer.Core
 import Text.Parser
@@ -20,6 +21,25 @@ resolution1D = 10
 Tiling : Type
 Tiling = Vect resolution1D $ Vect resolution1D Bool
 
+tilingOrientations : Tiling -> Vect 16 Tiling
+tilingOrientations tiling = concat $ tilingRotations <$> tilingFlippings tiling where
+  tilingFlippings : Tiling -> Vect 4 Tiling
+  tilingFlippings tiling =
+    [ tiling
+    , reverse tiling
+    , reverse <$> tiling
+    , reverse <$> reverse tiling
+    ]
+  tilingRotations : Tiling -> Vect 4 Tiling
+  tilingRotations tiling =
+    [ tiling
+    , rotate90 tiling
+    , rotate90 $ rotate90 tiling
+    , rotate90 $ rotate90 $ rotate90 tiling
+    ] where
+      rotate90 : Tiling -> Tiling
+      rotate90 = reverse . transpose
+
 record Tile where
   constructor MkTile
   id : Nat
@@ -27,6 +47,17 @@ record Tile where
 
 Show Tile where
   show (MkTile id tiling) = "Tile " ++ show id ++ " " ++ show tiling
+
+TilingMap : Type
+TilingMap = SortedMap Nat Tiling
+
+createTilingMap : List Tile -> TilingMap
+createTilingMap = fromList . map f where
+  f : Tile -> (Nat, Tiling)
+  f (MkTile id tiling) = (id, tiling)
+
+Arrangement : Nat -> Type
+Arrangement n = Vect n $ Vect n $ Maybe Nat
 
 ----------------------------------------------------------------------------------------------------
 
@@ -72,9 +103,7 @@ namespace Parsing
     , (is ':', DKColon)
     ]
 
-  countExactly : (n : Nat) ->
-                 (p : Grammar tok True a) ->
-                 Grammar tok (isSucc n) (Vect n a)
+  countExactly : (n : Nat) -> (p : Grammar tok True a) -> Grammar tok (isSucc n) (Vect n a)
   countExactly Z p = Empty []
   countExactly (S k) p = [| p :: countExactly k p |]
 
@@ -83,7 +112,8 @@ namespace Parsing
     grammarPixel : Grammar (Token DataKind) True Bool
     grammarPixel = match DKDot $> False <|> match DKHash $> True
     grammarTiling : Grammar (Token DataKind) True Tiling
-    grammarTiling = countExactly resolution1D $ countExactly resolution1D grammarPixel <* match DKNewline
+    grammarTiling =
+      countExactly resolution1D $ countExactly resolution1D grammarPixel <* match DKNewline
     grammarTile : Grammar (Token DataKind) True Tile
     grammarTile = do
       match DKTile
@@ -114,5 +144,6 @@ main = do
          case readData dat of
               Nothing => pure ()
               Just tiles => do
-                print tiles
+                let tilingMap = createTilingMap tiles
+                print tilingMap
   pure ()
