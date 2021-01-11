@@ -1,6 +1,7 @@
 module Main
 
 -- base
+import Control.Monad.State
 import Data.Nat
 import Data.Vect
 import System.File
@@ -56,8 +57,36 @@ createTilingMap = fromList . map f where
   f : Tile -> (Nat, Tiling)
   f (MkTile id tiling) = (id, tiling)
 
-Arrangement : Nat -> Type
-Arrangement n = Vect n $ Vect n $ Maybe Nat
+-- from square root of `length tiles`
+resolution1DImage : Nat
+resolution1DImage = 12
+
+Arrangement : Type
+Arrangement = Vect resolution1DImage $ Vect resolution1DImage $ Maybe Nat
+
+nextCoordinate : {n : Nat} -> (x : Fin $ S n) -> Fin $ S n
+nextCoordinate x with (strengthen x)
+  nextCoordinate x | (Left y) = FZ
+  nextCoordinate x | (Right y) = FS y
+
+nextCoordinates : {n : Nat} ->
+                  (x : Fin n) ->
+                  (y : Fin n) ->
+                  Maybe (Fin n, Fin n)
+nextCoordinates x y with (n)
+  nextCoordinates x y | Z = Nothing
+  nextCoordinates x y | (S k) =
+    if x == last
+       then if y == last
+               then Nothing
+               else Just (FZ, nextCoordinate y)
+       else Just (nextCoordinate x, nextCoordinate y)
+
+tryTiling : (tilingMap : TilingMap) ->
+            (x : Fin resolution1DImage) ->
+            (y : Fin resolution1DImage) ->
+            State Arrangement Arrangement
+tryTiling tilingMap x y = ?tryTiling_rhs
 
 ----------------------------------------------------------------------------------------------------
 
@@ -145,5 +174,5 @@ main = do
               Nothing => pure ()
               Just tiles => do
                 let tilingMap = createTilingMap tiles
-                print tilingMap
+                print $ length tiles
   pure ()
