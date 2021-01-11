@@ -2,6 +2,7 @@ module Main
 
 -- base
 import Control.Monad.State
+import Data.List
 import Data.Nat
 import Data.Vect
 import System.File
@@ -16,11 +17,11 @@ import Text.Token
 
 ----------------------------------------------------------------------------------------------------
 
-resolution1D : Nat
-resolution1D = 10
+Resolution1D : Nat
+Resolution1D = 10
 
 Tiling : Type
-Tiling = Vect resolution1D $ Vect resolution1D Bool
+Tiling = Vect Resolution1D $ Vect Resolution1D Bool
 
 tilingOrientations : Tiling -> Vect 16 Tiling
 tilingOrientations tiling = concat $ tilingRotations <$> tilingFlippings tiling where
@@ -58,11 +59,11 @@ createTilingMap = fromList . map f where
   f (MkTile id tiling) = (id, tiling)
 
 -- from square root of `length tiles`
-resolution1DImage : Nat
-resolution1DImage = 12
+Resolution1DImage : Nat
+Resolution1DImage = 12
 
 Arrangement : Type
-Arrangement = Vect resolution1DImage $ Vect resolution1DImage $ Maybe Nat
+Arrangement = Vect Resolution1DImage $ Vect Resolution1DImage $ Maybe Nat
 
 nextCoordinate : {n : Nat} -> (x : Fin $ S n) -> Fin $ S n
 nextCoordinate x with (strengthen x)
@@ -82,11 +83,89 @@ nextCoordinates x y with (n)
                else Just (FZ, nextCoordinate y)
        else Just (nextCoordinate x, nextCoordinate y)
 
-tryTiling : (tilingMap : TilingMap) ->
-            (x : Fin resolution1DImage) ->
-            (y : Fin resolution1DImage) ->
-            State Arrangement Arrangement
-tryTiling tilingMap x y = ?tryTiling_rhs
+data Direction = DirectionLeft
+               | DirectionUp
+
+neighborsToCheck : {n : Nat} ->
+                   (x : Fin n) ->
+                   (y : Fin n) ->
+                   List ((Fin n, Fin n), Direction)
+neighborsToCheck x y = [ ((pred x, y), DirectionUp), ((x, pred y), DirectionLeft) ] where
+  pred : {n : Nat} -> (x : Fin n) -> Fin n
+  pred FZ = last -- this is additional and not necessary, but allows returning Vect
+  pred (FS k) = weaken k
+
+neighborsToCheck' : (arrangement : Arrangement) ->
+                    (x : Fin Resolution1DImage) ->
+                    (y : Fin Resolution1DImage) ->
+                    List (Nat, Direction)
+neighborsToCheck' arrangement x y = do
+  ((x', y'), d') <- neighborsToCheck x y
+  let n = index x' $ index y' arrangement
+  case n of
+       Nothing => []
+       Just n' => pure (n', d')
+
+checkTiling : Direction -> (new : Tiling) -> (old : Tiling) -> Bool
+checkTiling DirectionLeft new old = (index last <$> old) == (index FZ <$> new)
+checkTiling DirectionUp new old = index last old == index FZ new
+
+checkNeighbors : (tilingMap : TilingMap) ->
+                 (new : Tiling) ->
+                 List (Nat, Direction) ->
+                 Bool
+checkNeighbors tilingMap new [] = True
+checkNeighbors tilingMap new ((n, d) :: xs) =
+  case lookup n tilingMap of
+       Nothing => ?keysShouldMatch
+       Just old => if checkTiling d new old
+                      then checkNeighbors tilingMap new xs
+                      else False
+
+checkNeighbors' : (tilingMap : TilingMap) ->
+                  (arrangement : Arrangement) ->
+                  (new : Tiling) ->
+                  (x : Fin Resolution1DImage) ->
+                  (y : Fin Resolution1DImage) ->
+                  Bool
+checkNeighbors' tilingMap arrangement new x y =
+  checkNeighbors tilingMap new $ neighborsToCheck' arrangement x y
+
+filterTilings : (tilingMap : TilingMap) ->
+                (arrangement : Arrangement) ->
+                (tilings : List (Nat, Tiling)) ->
+                (x : Fin Resolution1DImage) ->
+                (y : Fin Resolution1DImage) ->
+                List (Nat, Tiling)
+filterTilings tilingMap arrangement tilings x y =
+  filter (\(_,t) => checkNeighbors' tilingMap arrangement t x y) tilings
+
+tryTilings : (tilingMap : TilingMap) ->
+             (arrangement : Arrangement) ->
+             (x : Fin Resolution1DImage) ->
+             (y : Fin Resolution1DImage) ->
+             List Arrangement
+tryTilings tilingMap arrangement x y = ?tryTilings_rhs where
+  tilingsToTry : List (Nat, Tiling)
+  tilingsToTry = do
+    (n, t) <- Data.SortedMap.toList tilingMap
+    t' <- toList $ tilingOrientations t
+    pure (n, t')
+  possibleTilings : List (Nat, Tiling)
+  possibleTilings = filterTilings tilingMap arrangement tilingsToTry x y
+  nextTry : (Nat, Tiling) -> List Arrangement
+  nextTry (n, t) = case nextCoordinates x y of
+                        Nothing => pure newArrangement
+                        Just (x',y') => tryTilings newTilingMap newArrangement x' y'
+                        where
+                          newTilingMap : TilingMap
+                          newTilingMap = insert n t tilingMap
+                          newArrangement : Arrangement
+                          newArrangement = replaceAt y (replaceAt x (Just n) $ index y arrangement) arrangement
+
+findTilings : (tilingMap : TilingMap) ->
+              List Arrangement
+findTilings tilingMap = tryTilings tilingMap (pure $ pure Nothing) FZ FZ
 
 ----------------------------------------------------------------------------------------------------
 
@@ -142,7 +221,7 @@ namespace Parsing
     grammarPixel = match DKDot $> False <|> match DKHash $> True
     grammarTiling : Grammar (Token DataKind) True Tiling
     grammarTiling =
-      countExactly resolution1D $ countExactly resolution1D grammarPixel <* match DKNewline
+      countExactly Resolution1D $ countExactly Resolution1D grammarPixel <* match DKNewline
     grammarTile : Grammar (Token DataKind) True Tile
     grammarTile = do
       match DKTile
@@ -174,5 +253,5 @@ main = do
               Nothing => pure ()
               Just tiles => do
                 let tilingMap = createTilingMap tiles
-                print $ length tiles
+                print $ findTilings tilingMap
   pure ()
